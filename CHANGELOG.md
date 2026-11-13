@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- All `libvirt_domain_*` metrics carry the `uuid` label, the libvirt domain UUID, next to `domain`. `libvirt_domain_info_meta` had it already. After the upgrade Prometheus stores every domain series as a new series.
+
 ### Fixed
 - Every scrape over libvirt's read-only socket failed on a host with an active storage pool, because libvirt denies the pool refresh there. The pool sizes are now reported without a refresh.
 - An error in one storage pool no longer fails the whole scrape; it is logged and the other pools and all domain metrics are reported.

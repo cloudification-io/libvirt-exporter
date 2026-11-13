@@ -29,7 +29,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/AlexZzz/libvirt-exporter/libvirtSchema"
+	"github.com/cloudification-io/libvirt-exporter/libvirtSchema"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"libvirt.org/go/libvirt"

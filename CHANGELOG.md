@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker images are published to the GitHub Container Registry (`ghcr.io`) instead of Docker Hub.
 - The Docker image is based on Alpine 3.24 instead of 3.15, so it bundles a newer libvirt client library.
 - Build with Go 1.27 and current dependencies.
+- The Go module path is `github.com/cloudification-io/libvirt-exporter`.
 - CI runs on GitHub Actions instead of CircleCI.
 - Parse flags with the Go standard library instead of kingpin. `--flag=value` and `--flag value` work as before.
 - Single-dash flags (`-web.listen-address`) and `-h` are now accepted.

@@ -1,4 +1,4 @@
-module github.com/AlexZzz/libvirt-exporter
+module github.com/cloudification-io/libvirt-exporter
 
 go 1.27.0
 

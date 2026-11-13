@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	Version = ""
+	Version string
 
 	libvirtUpDesc = prometheus.NewDesc(
 		prometheus.BuildFQName("libvirt", "", "up"),
@@ -972,11 +972,11 @@ func CollectStoragePool(ch chan<- prometheus.Metric, pool libvirt.StoragePool) e
 	if err != nil {
 		return err
 	}
-	pool_name, err := pool.GetName()
+	poolName, err := pool.GetName()
 	if err != nil {
 		return err
 	}
-	pool_info, err := pool.GetInfo()
+	poolInfo, err := pool.GetInfo()
 	if err != nil {
 		return err
 	}
@@ -984,18 +984,18 @@ func CollectStoragePool(ch chan<- prometheus.Metric, pool libvirt.StoragePool) e
 	ch <- prometheus.MustNewConstMetric(
 		libvirtPoolInfoCapacity,
 		prometheus.GaugeValue,
-		float64(pool_info.Capacity),
-		pool_name)
+		float64(poolInfo.Capacity),
+		poolName)
 	ch <- prometheus.MustNewConstMetric(
 		libvirtPoolInfoAllocation,
 		prometheus.GaugeValue,
-		float64(pool_info.Allocation),
-		pool_name)
+		float64(poolInfo.Allocation),
+		poolName)
 	ch <- prometheus.MustNewConstMetric(
 		libvirtPoolInfoAvailable,
 		prometheus.GaugeValue,
-		float64(pool_info.Available),
-		pool_name)
+		float64(poolInfo.Available),
+		poolName)
 	return nil
 }
 
@@ -1041,7 +1041,7 @@ func CollectFromLibvirt(ch chan<- prometheus.Metric, uri string) error {
 		libvirt.CONNECT_GET_ALL_DOMAINS_STATS_RUNNING|libvirt.CONNECT_GET_ALL_DOMAINS_STATS_SHUTOFF)
 	defer func(stats []libvirt.DomainStats) {
 		for _, stat := range stats {
-			stat.Domain.Free()
+			_ = stat.Domain.Free()
 		}
 	}(stats)
 	if err != nil {
@@ -1061,7 +1061,7 @@ func CollectFromLibvirt(ch chan<- prometheus.Metric, uri string) error {
 	}
 	for _, pool := range pools {
 		err = CollectStoragePool(ch, pool)
-		pool.Free()
+		_ = pool.Free()
 		if err != nil {
 			return err
 		}
@@ -1203,8 +1203,8 @@ func main() {
 	prometheus.MustRegister(exporter)
 
 	http.Handle(*metricsPath, promhttp.Handler())
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`
+	http.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`
 			<html>
 			<head><title>Libvirt Exporter</title></head>
 			<body>

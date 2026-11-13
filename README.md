@@ -1,8 +1,8 @@
 # Prometheus libvirt exporter
 
-Docker image is available at [dockerhub](https://hub.docker.com/r/alekseizakharov/libvirt-exporter).
+Each release tag publishes a Docker image to `ghcr.io/<owner>/libvirt-exporter`, where `<owner>` is the GitHub account or organization that hosts this repository.
 
- - `Dockerfile` - creates a docker container with dynamically linked libvirt-exporter. Make an image and run with `docker container run -p9177:9177 -v /var/run/libvirt:/var/run/libvirt yourcontainername`. Based on the latest golang:alpine.
+ - `Dockerfile` - creates a docker container with dynamically linked libvirt-exporter. Make an image and run with `docker container run -p9177:9177 -v /var/run/libvirt:/var/run/libvirt yourcontainername`. Based on Alpine Linux.
  - `build-with` - builds dynamically linked libvirt-exporter in the container based on Dockerfile specified as an argument. Ex.: `build-with ./build_containers/Dockerfile.ubuntu2404` will build libvirt-exporter for Ubuntu 24.04.
 
 # Metrics

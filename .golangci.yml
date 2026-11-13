@@ -1,0 +1,15 @@
+version: "2"
+
+linters:
+  enable:
+    - misspell
+    - modernize
+    - revive
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt

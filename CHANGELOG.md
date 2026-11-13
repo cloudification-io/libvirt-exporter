@@ -13,9 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Docker image is based on Alpine 3.24 instead of 3.15, so it bundles a newer libvirt client library.
 - Build with Go 1.27 and current dependencies.
 - CI runs on GitHub Actions instead of CircleCI.
+- Parse flags with the Go standard library instead of kingpin. `--flag=value` and `--flag value` work as before.
+- Single-dash flags (`-web.listen-address`) and `-h` are now accepted.
+- `--version` prints to stdout instead of stderr.
+- Unknown flags and stray arguments exit with code 2 and print the usage.
+- A flag given twice takes the last value instead of failing.
 
 ### Removed
 - `build-with` containers for Ubuntu 16.04, 18.04 and 20.04.
+- `@file` argument expansion, `--help-long` and `--help-man`.
 
 ### Fixed
 - The exporter crashed when a block device in the domain stats had no matching `<disk>` in the domain XML.

@@ -19,6 +19,7 @@ package main
 
 import (
 	"encoding/xml"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,7 +27,6 @@ import (
 	"strconv"
 
 	"github.com/AlexZzz/libvirt-exporter/libvirtSchema"
-	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"libvirt.org/go/libvirt"
@@ -1167,13 +1167,25 @@ func (e *LibvirtExporter) Collect(ch chan<- prometheus.Metric) {
 
 func main() {
 	var (
-		app           = kingpin.New("libvirt_exporter", "Prometheus metrics exporter for libvirt")
-		listenAddress = app.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9177").String()
-		metricsPath   = app.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-		libvirtURI    = app.Flag("libvirt.uri", "Libvirt URI from which to extract metrics.").Default("qemu:///system").String()
+		listenAddress = flag.String("web.listen-address", ":9177", "Address to listen on for web interface and telemetry.")
+		metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+		libvirtURI    = flag.String("libvirt.uri", "qemu:///system", "Libvirt URI from which to extract metrics.")
+		showVersion   = flag.Bool("version", false, "Print the version and exit.")
 	)
-	app.Version(Version)
-	kingpin.MustParse(app.Parse(os.Args[1:]))
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags]\n\nPrometheus metrics exporter for libvirt\n\nFlags:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	if flag.NArg() > 0 {
+		fmt.Fprintf(flag.CommandLine.Output(), "unexpected argument %q\n", flag.Arg(0))
+		flag.Usage()
+		os.Exit(2)
+	}
+	if *showVersion {
+		fmt.Println(Version)
+		return
+	}
 
 	exporter, err := NewLibvirtExporter(*libvirtURI)
 	if err != nil {

@@ -18,13 +18,16 @@
 package main
 
 import (
+	"context"
 	"encoding/xml"
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/AlexZzz/libvirt-exporter/libvirtSchema"
 	"github.com/prometheus/client_golang/prometheus"
@@ -380,7 +383,27 @@ var (
 		"The amount of memory in percent, that used by domain.",
 		[]string{"domain"},
 		nil)
+
+	debugSeenMu sync.Mutex
+	debugSeen   = map[string]struct{}{}
 )
+
+// debugOnce logs msg at debug level the first time it sees key with err's libvirt error code.
+func debugOnce(key, msg string, err error, args ...any) {
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		return
+	}
+	if lverr, ok := err.(libvirt.Error); ok {
+		key = fmt.Sprintf("%s/%d", key, lverr.Code)
+	}
+	debugSeenMu.Lock()
+	_, seen := debugSeen[key]
+	debugSeen[key] = struct{}{}
+	debugSeenMu.Unlock()
+	if !seen {
+		slog.Debug(msg, append(args, "err", err)...)
+	}
+}
 
 // CollectDomain extracts Prometheus metrics from a libvirt domain.
 func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error {
@@ -456,6 +479,7 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 		if !ok || lverr.Code != libvirt.ERR_OPERATION_INVALID {
 			return err
 		}
+		debugOnce("vcpu/"+domainName, "GetVcpus failed, skipping vCPU metrics", err, "domain", domainName)
 	} else {
 		for _, vcpu := range domainStatsVcpu {
 			ch <- prometheus.MustNewConstMetric(
@@ -641,6 +665,7 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 			if _, ok := err.(libvirt.Error); !ok {
 				return err
 			}
+			debugOnce("iotune/"+domainName+"/"+disk.Name, "GetBlockIoTune failed, skipping iotune metrics", err, "domain", domainName, "disk", disk.Name)
 		} else {
 			if blockIOTuneParams.TotalBytesSecSet {
 				ch <- prometheus.MustNewConstMetric(
@@ -894,7 +919,8 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 		if MemoryStats.Usable != 0 && MemoryStats.Available != 0 {
 			usedPercent = (float64(MemoryStats.Available) - float64(MemoryStats.Usable)) / (float64(MemoryStats.Available) / float64(100))
 		}
-
+	} else {
+		debugOnce("memory/"+domainName, "MemoryStats failed, reporting memory stats as 0", err, "domain", domainName)
 	}
 	ch <- prometheus.MustNewConstMetric(
 		libvirtDomainMemoryStatMajorFaultTotalDesc,
@@ -1030,7 +1056,7 @@ func CollectFromLibvirt(ch chan<- prometheus.Metric, uri string) error {
 	for _, stat := range stats {
 		err = CollectDomain(ch, stat)
 		if err != nil {
-			log.Printf("Failed to scrape metrics: %s", err)
+			slog.Error("Failed to scrape metrics", "err", err)
 		}
 	}
 
@@ -1157,7 +1183,7 @@ func (e *LibvirtExporter) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			1.0)
 	} else {
-		log.Printf("Failed to scrape metrics: %s", err)
+		slog.Error("Failed to scrape metrics", "err", err)
 		ch <- prometheus.MustNewConstMetric(
 			libvirtUpDesc,
 			prometheus.GaugeValue,
@@ -1172,6 +1198,8 @@ func main() {
 		libvirtURI    = flag.String("libvirt.uri", "qemu:///system", "Libvirt URI from which to extract metrics.")
 		showVersion   = flag.Bool("version", false, "Print the version and exit.")
 	)
+	var logLevel slog.Level
+	flag.TextVar(&logLevel, "log.level", slog.LevelInfo, "Only log messages with the given severity or above. One of: debug, info, warn, error.")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags]\n\nPrometheus metrics exporter for libvirt\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -1186,6 +1214,7 @@ func main() {
 		fmt.Println(Version)
 		return
 	}
+	slog.SetLogLoggerLevel(logLevel)
 
 	exporter, err := NewLibvirtExporter(*libvirtURI)
 	if err != nil {

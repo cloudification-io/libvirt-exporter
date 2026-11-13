@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - `build-with` containers for Ubuntu 24.04 and 26.04.
+- `--log.level` flag (`debug`, `info`, `warn`, `error`; default `info`). At `debug` the exporter logs, once per domain or disk, each libvirt query that fails without failing the scrape: vCPU info, memory stats and block I/O tuning.
 
 ### Changed
 - Docker images are published to the GitHub Container Registry (`ghcr.io`) instead of Docker Hub.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--version` prints to stdout instead of stderr.
 - Unknown flags and stray arguments exit with code 2 and print the usage.
 - A flag given twice takes the last value instead of failing.
+- The `Failed to scrape metrics` log lines carry the `ERROR` level, with the error in an `err=` field.
 
 ### Removed
 - `build-with` containers for Ubuntu 16.04, 18.04 and 20.04.

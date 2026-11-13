@@ -3,7 +3,7 @@
 Docker image is available at [dockerhub](https://hub.docker.com/r/alekseizakharov/libvirt-exporter).
 
  - `Dockerfile` - creates a docker container with dynamically linked libvirt-exporter. Make an image and run with `docker container run -p9177:9177 -v /var/run/libvirt:/var/run/libvirt yourcontainername`. Based on the latest golang:alpine.
- - `build-with` - builds dynamically linked libvirt-exporter in the container based on Dockerfile specified as an argument. Ex.: `build-with ./build_container/Dockerfile.ubuntu2004` will build libvirt-exporter for Ubuntu 20.04.
+ - `build-with` - builds dynamically linked libvirt-exporter in the container based on Dockerfile specified as an argument. Ex.: `build-with ./build_containers/Dockerfile.ubuntu2404` will build libvirt-exporter for Ubuntu 24.04.
 
 # Metrics
 The following metrics/labels are being exported:

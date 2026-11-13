@@ -529,20 +529,22 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 			}
 		}
 
-		ch <- prometheus.MustNewConstMetric(
-			libvirtDomainMetaBlockDesc,
-			prometheus.GaugeValue,
-			float64(1),
-			domainName,
-			disk.Name,
-			DiskSource,
-			Device.Serial,
-			Device.Target.Bus,
-			Device.DiskType,
-			Device.Driver.Type,
-			Device.Driver.Cache,
-			Device.Driver.Discard,
-		)
+		if Device != nil {
+			ch <- prometheus.MustNewConstMetric(
+				libvirtDomainMetaBlockDesc,
+				prometheus.GaugeValue,
+				float64(1),
+				domainName,
+				disk.Name,
+				DiskSource,
+				Device.Serial,
+				Device.Target.Bus,
+				Device.DiskType,
+				Device.Driver.Type,
+				Device.Driver.Cache,
+				Device.Driver.Discard,
+			)
+		}
 
 		// https://libvirt.org/html/libvirt-libvirt-domain.html#virConnectGetAllDomainStats
 		if disk.RdBytesSet {

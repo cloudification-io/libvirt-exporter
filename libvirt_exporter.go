@@ -380,20 +380,7 @@ var (
 		"The amount of memory in percent, that used by domain.",
 		[]string{"domain"},
 		nil)
-
-	errorsMap map[string]struct{}
 )
-
-// WriteErrorOnce writes message to stdout only once
-// for the error
-// "err" - an error message
-// "name" - name of an error, to count it
-func WriteErrorOnce(err string, name string) {
-	if _, ok := errorsMap[name]; !ok {
-		log.Printf("%s", err)
-		errorsMap[name] = struct{}{}
-	}
-}
 
 // CollectDomain extracts Prometheus metrics from a libvirt domain.
 func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error {
@@ -649,17 +636,8 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 
 		blockIOTuneParams, err := stat.Domain.GetBlockIoTune(disk.Name, 0)
 		if err != nil {
-			lverr, ok := err.(libvirt.Error)
-			if !ok {
-				switch lverr.Code {
-				case libvirt.ERR_OPERATION_INVALID:
-					// This should be one-shot error
-					log.Printf("Invalid operation GetBlockIoTune: %s", err.Error())
-				case libvirt.ERR_OPERATION_UNSUPPORTED:
-					WriteErrorOnce("Unsupported operation GetBlockIoTune: "+err.Error(), "blkiotune_unsupported")
-				default:
-					return err
-				}
+			if _, ok := err.(libvirt.Error); !ok {
+				return err
 			}
 		} else {
 			if blockIOTuneParams.TotalBytesSecSet {
@@ -1194,7 +1172,6 @@ func main() {
 	)
 	app.Version(Version)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
-	errorsMap = make(map[string]struct{})
 
 	exporter, err := NewLibvirtExporter(*libvirtURI)
 	if err != nil {

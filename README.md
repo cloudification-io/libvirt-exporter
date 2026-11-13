@@ -79,6 +79,7 @@ libvirt_domain_vcpu_time_seconds_total{domain="instance-00000337",vcpu="0"} 3151
 libvirt_domain_vcpu_wait_seconds_total{domain="instance-00000337",vcpu="0"} 0
 
 libvirt_up 1
+libvirt_versions_info{hypervisor_running="8.2.2",libvirt_library="12.3.0",libvirtd_running="10.0.0"} 1
 ```
 
 ## Libvirt/qemu version notice

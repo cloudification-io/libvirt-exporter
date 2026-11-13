@@ -27,9 +27,10 @@
 package libvirt
 
 /*
-#cgo pkg-config: libvirt
-#include <stdlib.h>
-#include "stream_wrapper.h"
+#cgo !libvirt_dlopen pkg-config: libvirt
+#cgo libvirt_dlopen LDFLAGS: -ldl
+#cgo libvirt_dlopen CFLAGS: -DLIBVIRT_DLOPEN
+#include "stream_helper.h"
 */
 import "C"
 import (
@@ -106,8 +107,17 @@ func (c *Stream) Ref() error {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamRecv
 func (v *Stream) Recv(p []byte) (int, error) {
+	np := len(p)
 	var err C.virError
-	n := C.virStreamRecvWrapper(v.ptr, (*C.char)(unsafe.Pointer(&p[0])), C.size_t(len(p)), &err)
+	var pPtr *C.char = nil
+	if np > 0 {
+		pPtr = (*C.char)(unsafe.Pointer(&p[0]))
+	}
+	n := C.virStreamRecvWrapper(v.ptr, pPtr, C.size_t(np), &err)
+	// -2 == blocking, -3 == in hole
+	if n == -2 || n == -3 {
+		return int(n), nil
+	}
 	if n < 0 {
 		return 0, makeError(&err)
 	}
@@ -120,12 +130,17 @@ func (v *Stream) Recv(p []byte) (int, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamRecvFlags
 func (v *Stream) RecvFlags(p []byte, flags StreamRecvFlagsValues) (int, error) {
-	if C.LIBVIR_VERSION_NUMBER < 3004000 {
-		return 0, makeNotImplementedError("virStreamRecvFlags")
-	}
-
+	np := len(p)
 	var err C.virError
-	n := C.virStreamRecvFlagsWrapper(v.ptr, (*C.char)(unsafe.Pointer(&p[0])), C.size_t(len(p)), C.uint(flags), &err)
+	var pPtr *C.char = nil
+	if np > 0 {
+		pPtr = (*C.char)(unsafe.Pointer(&p[0]))
+	}
+	n := C.virStreamRecvFlagsWrapper(v.ptr, pPtr, C.size_t(np), C.uint(flags), &err)
+	// -2 == blocking, -3 == in hole
+	if n == -2 || n == -3 {
+		return int(n), nil
+	}
 	if n < 0 {
 		return 0, makeError(&err)
 	}
@@ -138,10 +153,6 @@ func (v *Stream) RecvFlags(p []byte, flags StreamRecvFlagsValues) (int, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamRecvHole
 func (v *Stream) RecvHole(flags uint32) (int64, error) {
-	if C.LIBVIR_VERSION_NUMBER < 3004000 {
-		return 0, makeNotImplementedError("virStreamSparseRecvHole")
-	}
-
 	var len C.longlong
 	var err C.virError
 	ret := C.virStreamRecvHoleWrapper(v.ptr, &len, C.uint(flags), &err)
@@ -154,8 +165,17 @@ func (v *Stream) RecvHole(flags uint32) (int64, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamSend
 func (v *Stream) Send(p []byte) (int, error) {
+	np := len(p)
 	var err C.virError
-	n := C.virStreamSendWrapper(v.ptr, (*C.char)(unsafe.Pointer(&p[0])), C.size_t(len(p)), &err)
+	var pPtr *C.char = nil
+	if np > 0 {
+		pPtr = (*C.char)(unsafe.Pointer(&p[0]))
+	}
+	n := C.virStreamSendWrapper(v.ptr, pPtr, C.size_t(np), &err)
+	// -2 == blocking
+	if n == -2 {
+		return int(n), nil
+	}
 	if n < 0 {
 		return 0, makeError(&err)
 	}
@@ -168,10 +188,6 @@ func (v *Stream) Send(p []byte) (int, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamSendHole
 func (v *Stream) SendHole(len int64, flags uint32) error {
-	if C.LIBVIR_VERSION_NUMBER < 3004000 {
-		return makeNotImplementedError("virStreamSendHole")
-	}
-
 	var err C.virError
 	ret := C.virStreamSendHoleWrapper(v.ptr, C.longlong(len), C.uint(flags), &err)
 	if ret < 0 {
@@ -184,8 +200,8 @@ func (v *Stream) SendHole(len int64, flags uint32) error {
 type StreamSinkFunc func(*Stream, []byte) (int, error)
 type StreamSinkHoleFunc func(*Stream, int64) error
 
-//export streamSinkCallback
-func streamSinkCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t, callbackID int) int {
+//export virGoStreamSinkCallback
+func virGoStreamSinkCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t, callbackID int) int {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamSinkFunc)
@@ -207,8 +223,8 @@ func streamSinkCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t, c
 	return retnbytes
 }
 
-//export streamSinkHoleCallback
-func streamSinkHoleCallback(stream C.virStreamPtr, length C.longlong, callbackID int) int {
+//export virGoStreamSinkHoleCallback
+func virGoStreamSinkHoleCallback(stream C.virStreamPtr, length C.longlong, callbackID int) int {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamSinkHoleFunc)
@@ -230,8 +246,8 @@ func (v *Stream) RecvAll(handler StreamSinkFunc) error {
 	callbackID := registerCallbackId(handler)
 
 	var err C.virError
-	ret := C.virStreamRecvAllWrapper(v.ptr, (C.int)(callbackID), &err)
-	freeCallbackId(callbackID)
+	ret := C.virStreamRecvAllHelper(v.ptr, (C.int)(callbackID), &err)
+	virGoFreeCallbackId(callbackID)
 	if ret == -1 {
 		return makeError(&err)
 	}
@@ -241,17 +257,13 @@ func (v *Stream) RecvAll(handler StreamSinkFunc) error {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamSparseRecvAll
 func (v *Stream) SparseRecvAll(handler StreamSinkFunc, holeHandler StreamSinkHoleFunc) error {
-	if C.LIBVIR_VERSION_NUMBER < 3004000 {
-		return makeNotImplementedError("virStreamSparseSendAll")
-	}
-
 	callbackID := registerCallbackId(handler)
 	holeCallbackID := registerCallbackId(holeHandler)
 
 	var err C.virError
-	ret := C.virStreamSparseRecvAllWrapper(v.ptr, (C.int)(callbackID), (C.int)(holeCallbackID), &err)
-	freeCallbackId(callbackID)
-	freeCallbackId(holeCallbackID)
+	ret := C.virStreamSparseRecvAllHelper(v.ptr, (C.int)(callbackID), (C.int)(holeCallbackID), &err)
+	virGoFreeCallbackId(callbackID)
+	virGoFreeCallbackId(holeCallbackID)
 	if ret == -1 {
 		return makeError(&err)
 	}
@@ -263,8 +275,8 @@ type StreamSourceFunc func(*Stream, int) ([]byte, error)
 type StreamSourceHoleFunc func(*Stream) (bool, int64, error)
 type StreamSourceSkipFunc func(*Stream, int64) error
 
-//export streamSourceCallback
-func streamSourceCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t, callbackID int) int {
+//export virGoStreamSourceCallback
+func virGoStreamSourceCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t, callbackID int) int {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamSourceFunc)
@@ -290,8 +302,8 @@ func streamSourceCallback(stream C.virStreamPtr, cdata *C.char, nbytes C.size_t,
 	return nretbytes
 }
 
-//export streamSourceHoleCallback
-func streamSourceHoleCallback(stream C.virStreamPtr, cinData *C.int, clength *C.longlong, callbackID int) int {
+//export virGoStreamSourceHoleCallback
+func virGoStreamSourceHoleCallback(stream C.virStreamPtr, cinData *C.int, clength *C.longlong, callbackID int) int {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamSourceHoleFunc)
@@ -314,8 +326,8 @@ func streamSourceHoleCallback(stream C.virStreamPtr, cinData *C.int, clength *C.
 	return 0
 }
 
-//export streamSourceSkipCallback
-func streamSourceSkipCallback(stream C.virStreamPtr, length C.longlong, callbackID int) int {
+//export virGoStreamSourceSkipCallback
+func virGoStreamSourceSkipCallback(stream C.virStreamPtr, length C.longlong, callbackID int) int {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamSourceSkipFunc)
@@ -337,8 +349,8 @@ func (v *Stream) SendAll(handler StreamSourceFunc) error {
 	callbackID := registerCallbackId(handler)
 
 	var err C.virError
-	ret := C.virStreamSendAllWrapper(v.ptr, (C.int)(callbackID), &err)
-	freeCallbackId(callbackID)
+	ret := C.virStreamSendAllHelper(v.ptr, (C.int)(callbackID), &err)
+	virGoFreeCallbackId(callbackID)
 	if ret == -1 {
 		return makeError(&err)
 	}
@@ -348,19 +360,15 @@ func (v *Stream) SendAll(handler StreamSourceFunc) error {
 
 // See also https://libvirt.org/html/libvirt-libvirt-stream.html#virStreamSparseSendAll
 func (v *Stream) SparseSendAll(handler StreamSourceFunc, holeHandler StreamSourceHoleFunc, skipHandler StreamSourceSkipFunc) error {
-	if C.LIBVIR_VERSION_NUMBER < 3004000 {
-		return makeNotImplementedError("virStreamSparseSendAll")
-	}
-
 	callbackID := registerCallbackId(handler)
 	holeCallbackID := registerCallbackId(holeHandler)
 	skipCallbackID := registerCallbackId(skipHandler)
 
 	var err C.virError
-	ret := C.virStreamSparseSendAllWrapper(v.ptr, (C.int)(callbackID), (C.int)(holeCallbackID), (C.int)(skipCallbackID), &err)
-	freeCallbackId(callbackID)
-	freeCallbackId(holeCallbackID)
-	freeCallbackId(skipCallbackID)
+	ret := C.virStreamSparseSendAllHelper(v.ptr, (C.int)(callbackID), (C.int)(holeCallbackID), (C.int)(skipCallbackID), &err)
+	virGoFreeCallbackId(callbackID)
+	virGoFreeCallbackId(holeCallbackID)
+	virGoFreeCallbackId(skipCallbackID)
 	if ret == -1 {
 		return makeError(&err)
 	}
@@ -375,7 +383,7 @@ func (v *Stream) EventAddCallback(events StreamEventType, callback StreamEventCa
 	callbackID := registerCallbackId(callback)
 
 	var err C.virError
-	ret := C.virStreamEventAddCallbackWrapper(v.ptr, (C.int)(events), (C.int)(callbackID), &err)
+	ret := C.virStreamEventAddCallbackHelper(v.ptr, (C.int)(events), (C.int)(callbackID), &err)
 	if ret == -1 {
 		return makeError(&err)
 	}
@@ -383,8 +391,8 @@ func (v *Stream) EventAddCallback(events StreamEventType, callback StreamEventCa
 	return nil
 }
 
-//export streamEventCallback
-func streamEventCallback(st C.virStreamPtr, events int, callbackID int) {
+//export virGoStreamEventCallback
+func virGoStreamEventCallback(st C.virStreamPtr, events int, callbackID int) {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(StreamEventCallback)

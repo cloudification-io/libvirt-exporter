@@ -27,9 +27,11 @@
 package libvirt
 
 /*
-#cgo pkg-config: libvirt
+#cgo !libvirt_dlopen pkg-config: libvirt
+#cgo libvirt_dlopen LDFLAGS: -ldl
+#cgo libvirt_dlopen CFLAGS: -DLIBVIRT_DLOPEN
 #include <stdint.h>
-#include "events_wrapper.h"
+#include "events_helper.h"
 */
 import "C"
 
@@ -43,9 +45,18 @@ const (
 )
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventRegisterDefaultImpl
+//
+// Note that registering an event loop implementation must be
+// done before creating any Connect object instance
 func EventRegisterDefaultImpl() error {
 	var err C.virError
-	C.virInitialize()
+	if C.virInitializeWrapper(&err) < 0 {
+		return makeError(&err)
+	}
+	e := adminInitialize()
+	if e != nil {
+		return e
+	}
 	if i := int(C.virEventRegisterDefaultImplWrapper(&err)); i != 0 {
 		return makeError(&err)
 	}
@@ -63,8 +74,8 @@ func EventRunDefaultImpl() error {
 
 type EventHandleCallback func(watch int, file int, events EventHandleType)
 
-//export eventHandleCallback
-func eventHandleCallback(watch int, fd int, events int, callbackID int) {
+//export virGoEventHandleCallback
+func virGoEventHandleCallback(watch int, fd int, events int, callbackID int) {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(EventHandleCallback)
@@ -80,7 +91,7 @@ func EventAddHandle(fd int, events EventHandleType, callback EventHandleCallback
 	callbackID := registerCallbackId(callback)
 
 	var err C.virError
-	ret := C.virEventAddHandleWrapper((C.int)(fd), (C.int)(events), (C.int)(callbackID), &err)
+	ret := C.virEventAddHandleHelper((C.int)(fd), (C.int)(events), (C.int)(callbackID), &err)
 	if ret == -1 {
 		return 0, makeError(&err)
 	}
@@ -90,7 +101,7 @@ func EventAddHandle(fd int, events EventHandleType, callback EventHandleCallback
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventUpdateHandle
 func EventUpdateHandle(watch int, events EventHandleType) {
-	C.virEventUpdateHandle((C.int)(watch), (C.int)(events))
+	C.virEventUpdateHandleWrapper((C.int)(watch), (C.int)(events))
 }
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventRemoveHandle
@@ -106,8 +117,8 @@ func EventRemoveHandle(watch int) error {
 
 type EventTimeoutCallback func(timer int)
 
-//export eventTimeoutCallback
-func eventTimeoutCallback(timer int, callbackID int) {
+//export virGoEventTimeoutCallback
+func virGoEventTimeoutCallback(timer int, callbackID int) {
 	callbackFunc := getCallbackId(callbackID)
 
 	callback, ok := callbackFunc.(EventTimeoutCallback)
@@ -123,7 +134,7 @@ func EventAddTimeout(freq int, callback EventTimeoutCallback) (int, error) {
 	callbackID := registerCallbackId(callback)
 
 	var err C.virError
-	ret := C.virEventAddTimeoutWrapper((C.int)(freq), (C.int)(callbackID), &err)
+	ret := C.virEventAddTimeoutHelper((C.int)(freq), (C.int)(callbackID), &err)
 	if ret == -1 {
 		return 0, makeError(&err)
 	}
@@ -133,7 +144,7 @@ func EventAddTimeout(freq int, callback EventTimeoutCallback) (int, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventUpdateTimeout
 func EventUpdateTimeout(timer int, freq int) {
-	C.virEventUpdateTimeout((C.int)(timer), (C.int)(freq))
+	C.virEventUpdateTimeoutWrapper((C.int)(timer), (C.int)(freq))
 }
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventRemoveTimeout
@@ -160,19 +171,19 @@ type EventTimeoutCallbackInfo struct {
 }
 
 func (i *EventHandleCallbackInfo) Invoke(watch int, fd int, event EventHandleType) {
-	C.eventHandleCallbackInvoke(C.int(watch), C.int(fd), C.int(event), C.uintptr_t(i.callback), C.uintptr_t(i.opaque))
+	C.virGoEventHandleCallbackInvoke(C.int(watch), C.int(fd), C.int(event), C.uintptr_t(i.callback), C.uintptr_t(i.opaque))
 }
 
 func (i *EventTimeoutCallbackInfo) Invoke(timer int) {
-	C.eventTimeoutCallbackInvoke(C.int(timer), C.uintptr_t(i.callback), C.uintptr_t(i.opaque))
+	C.virGoEventTimeoutCallbackInvoke(C.int(timer), C.uintptr_t(i.callback), C.uintptr_t(i.opaque))
 }
 
 func (i *EventHandleCallbackInfo) Free() {
-	C.eventHandleCallbackFree(C.uintptr_t(i.free), C.uintptr_t(i.opaque))
+	C.virGoEventHandleCallbackFree(C.uintptr_t(i.free), C.uintptr_t(i.opaque))
 }
 
 func (i *EventTimeoutCallbackInfo) Free() {
-	C.eventTimeoutCallbackFree(C.uintptr_t(i.free), C.uintptr_t(i.opaque))
+	C.virGoEventTimeoutCallbackFree(C.uintptr_t(i.free), C.uintptr_t(i.opaque))
 }
 
 type EventLoop interface {
@@ -187,14 +198,21 @@ type EventLoop interface {
 var eventLoopImpl EventLoop
 
 // See also https://libvirt.org/html/libvirt-libvirt-event.html#virEventRegisterImpl
-func EventRegisterImpl(impl EventLoop) {
+//
+// Note that registering an event loop implementation must be
+// done before creating any Connect object instance
+func EventRegisterImpl(impl EventLoop) error {
+	var err C.virError
 	eventLoopImpl = impl
-	C.virInitialize()
-	C.virEventRegisterImplWrapper()
+	if C.virInitializeWrapper(&err) < 0 {
+		return makeError(&err)
+	}
+	C.virEventRegisterImplHelper()
+	return nil
 }
 
-//export eventAddHandleFunc
-func eventAddHandleFunc(fd C.int, event C.int, callback uintptr, opaque uintptr, free uintptr) C.int {
+//export virGoEventAddHandleFunc
+func virGoEventAddHandleFunc(fd C.int, event C.int, callback uintptr, opaque uintptr, free uintptr) C.int {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}
@@ -208,8 +226,8 @@ func eventAddHandleFunc(fd C.int, event C.int, callback uintptr, opaque uintptr,
 	return C.int(eventLoopImpl.AddHandleFunc(int(fd), EventHandleType(event), cbinfo))
 }
 
-//export eventUpdateHandleFunc
-func eventUpdateHandleFunc(watch C.int, event C.int) {
+//export virGoEventUpdateHandleFunc
+func virGoEventUpdateHandleFunc(watch C.int, event C.int) {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}
@@ -217,8 +235,8 @@ func eventUpdateHandleFunc(watch C.int, event C.int) {
 	eventLoopImpl.UpdateHandleFunc(int(watch), EventHandleType(event))
 }
 
-//export eventRemoveHandleFunc
-func eventRemoveHandleFunc(watch C.int) {
+//export virGoEventRemoveHandleFunc
+func virGoEventRemoveHandleFunc(watch C.int) {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}
@@ -226,8 +244,8 @@ func eventRemoveHandleFunc(watch C.int) {
 	eventLoopImpl.RemoveHandleFunc(int(watch))
 }
 
-//export eventAddTimeoutFunc
-func eventAddTimeoutFunc(freq C.int, callback uintptr, opaque uintptr, free uintptr) C.int {
+//export virGoEventAddTimeoutFunc
+func virGoEventAddTimeoutFunc(freq C.int, callback uintptr, opaque uintptr, free uintptr) C.int {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}
@@ -241,8 +259,8 @@ func eventAddTimeoutFunc(freq C.int, callback uintptr, opaque uintptr, free uint
 	return C.int(eventLoopImpl.AddTimeoutFunc(int(freq), cbinfo))
 }
 
-//export eventUpdateTimeoutFunc
-func eventUpdateTimeoutFunc(timer C.int, freq C.int) {
+//export virGoEventUpdateTimeoutFunc
+func virGoEventUpdateTimeoutFunc(timer C.int, freq C.int) {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}
@@ -250,8 +268,8 @@ func eventUpdateTimeoutFunc(timer C.int, freq C.int) {
 	eventLoopImpl.UpdateTimeoutFunc(int(timer), int(freq))
 }
 
-//export eventRemoveTimeoutFunc
-func eventRemoveTimeoutFunc(timer C.int) {
+//export virGoEventRemoveTimeoutFunc
+func virGoEventRemoveTimeoutFunc(timer C.int) {
 	if eventLoopImpl == nil {
 		panic("Event loop impl is missing")
 	}

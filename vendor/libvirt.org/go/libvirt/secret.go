@@ -27,9 +27,11 @@
 package libvirt
 
 /*
-#cgo pkg-config: libvirt
+#cgo !libvirt_dlopen pkg-config: libvirt
+#cgo libvirt_dlopen LDFLAGS: -ldl
+#cgo libvirt_dlopen CFLAGS: -DLIBVIRT_DLOPEN
 #include <stdlib.h>
-#include "secret_wrapper.h"
+#include "libvirt_generated.h"
 */
 import "C"
 
@@ -46,6 +48,12 @@ const (
 	SECRET_USAGE_TYPE_ISCSI  = SecretUsageType(C.VIR_SECRET_USAGE_TYPE_ISCSI)
 	SECRET_USAGE_TYPE_TLS    = SecretUsageType(C.VIR_SECRET_USAGE_TYPE_TLS)
 	SECRET_USAGE_TYPE_VTPM   = SecretUsageType(C.VIR_SECRET_USAGE_TYPE_VTPM)
+)
+
+type SecretDefineFlags uint
+
+const (
+	SECRET_DEFINE_VALIDATE = SecretDefineFlags(C.VIR_SECRET_DEFINE_VALIDATE)
 )
 
 type SecretEventLifecycleType int
@@ -168,14 +176,19 @@ func (s *Secret) GetValue(flags uint32) ([]byte, error) {
 
 // See also https://libvirt.org/html/libvirt-libvirt-secret.html#virSecretSetValue
 func (s *Secret) SetValue(value []byte, flags uint32) error {
-	cvalue := make([]C.uchar, len(value))
+	nvalue := len(value)
+	cvalue := make([]C.uchar, nvalue)
 
-	for i := 0; i < len(value); i++ {
+	for i := 0; i < nvalue; i++ {
 		cvalue[i] = C.uchar(value[i])
 	}
 
 	var err C.virError
-	result := C.virSecretSetValueWrapper(s.ptr, &cvalue[0], C.size_t(len(value)), C.uint(flags), &err)
+	var cvaluePtr *C.uchar = nil
+	if nvalue > 0 {
+		cvaluePtr = &cvalue[0]
+	}
+	result := C.virSecretSetValueWrapper(s.ptr, cvaluePtr, C.size_t(nvalue), C.uint(flags), &err)
 
 	if result == -1 {
 		return makeError(&err)

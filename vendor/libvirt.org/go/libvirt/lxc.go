@@ -1,4 +1,5 @@
-// +build !without_lxc
+//go:build !libvirt_without_lxc
+// +build !libvirt_without_lxc
 
 /*
  * This file is part of the libvirt-go-module project
@@ -29,13 +30,15 @@
 package libvirt
 
 /*
-#cgo pkg-config: libvirt
+#cgo !libvirt_dlopen pkg-config: libvirt
 // Can't rely on pkg-config for libvirt-lxc since it was not
 // installed until 2.6.0 onwards
-#cgo LDFLAGS: -lvirt-lxc
+#cgo !libvirt_dlopen LDFLAGS: -lvirt-lxc
+#cgo libvirt_dlopen LDFLAGS: -ldl
+#cgo libvirt_dlopen CFLAGS: -DLIBVIRT_DLOPEN
 #include <stdlib.h>
 #include <string.h>
-#include "lxc_wrapper.h"
+#include "libvirt_lxc_generated.h"
 */
 import "C"
 
@@ -65,13 +68,18 @@ func (d *Domain) LxcOpenNamespace(flags uint32) ([]os.File, error) {
 func (d *Domain) LxcEnterNamespace(fdlist []os.File, flags uint32) ([]os.File, error) {
 	var coldfdlist *C.int
 	var ncoldfdlist C.uint
-	cfdlist := make([]C.int, len(fdlist))
-	for i := 0; i < len(fdlist); i++ {
+	nfdlist := len(fdlist)
+	cfdlist := make([]C.int, nfdlist)
+	for i := 0; i < nfdlist; i++ {
 		cfdlist[i] = C.int(fdlist[i].Fd())
 	}
 
 	var err C.virError
-	ret := C.virDomainLxcEnterNamespaceWrapper(d.ptr, C.uint(len(fdlist)), &cfdlist[0], &ncoldfdlist, &coldfdlist, C.uint(flags), &err)
+	var cfdlistPtr *C.int = nil
+	if nfdlist > 0 {
+		cfdlistPtr = &cfdlist[0]
+	}
+	ret := C.virDomainLxcEnterNamespaceWrapper(d.ptr, C.uint(nfdlist), cfdlistPtr, &ncoldfdlist, &coldfdlist, C.uint(flags), &err)
 	if ret == -1 {
 		return []os.File{}, makeError(&err)
 	}
@@ -140,10 +148,6 @@ func DomainLxcEnterSecurityLabel(model *NodeSecurityModel, label *SecurityLabel,
 }
 
 func (d *Domain) DomainLxcEnterCGroup(flags uint32) error {
-	if C.LIBVIR_VERSION_NUMBER < 2000000 {
-		return makeNotImplementedError("virDomainLxcEnterCGroup")
-	}
-
 	var err C.virError
 	ret := C.virDomainLxcEnterCGroupWrapper(d.ptr, C.uint(flags), &err)
 

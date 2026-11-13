@@ -32,8 +32,10 @@ import (
 )
 
 /*
-#cgo pkg-config: libvirt
-#include "network_events_wrapper.h"
+#cgo !libvirt_dlopen pkg-config: libvirt
+#cgo libvirt_dlopen LDFLAGS: -ldl
+#cgo libvirt_dlopen CFLAGS: -DLIBVIRT_DLOPEN
+#include "network_events_helper.h"
 */
 import "C"
 
@@ -45,8 +47,15 @@ type NetworkEventLifecycle struct {
 
 type NetworkEventLifecycleCallback func(c *Connect, n *Network, event *NetworkEventLifecycle)
 
-//export networkEventLifecycleCallback
-func networkEventLifecycleCallback(c C.virConnectPtr, n C.virNetworkPtr,
+type NetworkEventMetadataChange struct {
+	Type  NetworkMetadataType
+	NSURI string
+}
+
+type NetworkEventMetadataChangeCallback func(c *Connect, n *Network, event *NetworkEventMetadataChange)
+
+//export virGoNetworkEventLifecycleCallback
+func virGoNetworkEventLifecycleCallback(c C.virConnectPtr, n C.virNetworkPtr,
 	event int, detail int,
 	goCallbackId int) {
 
@@ -66,33 +75,64 @@ func networkEventLifecycleCallback(c C.virConnectPtr, n C.virNetworkPtr,
 	callback(connection, network, eventDetails)
 }
 
+//export virGoNetworkEventMetadataChangeCallback
+func virGoNetworkEventMetadataChangeCallback(c C.virConnectPtr, d C.virNetworkPtr,
+	mtype int, nsuri *C.char, goCallbackId int) {
+
+	network := &Network{ptr: d}
+	connection := &Connect{ptr: c}
+
+	eventDetails := &NetworkEventMetadataChange{
+		Type:  NetworkMetadataType(mtype),
+		NSURI: C.GoString(nsuri),
+	}
+	callbackFunc := getCallbackId(goCallbackId)
+	callback, ok := callbackFunc.(NetworkEventMetadataChangeCallback)
+	if !ok {
+		panic("Inappropriate callback type called")
+	}
+	callback(connection, network, eventDetails)
+}
+
 func (c *Connect) NetworkEventLifecycleRegister(net *Network, callback NetworkEventLifecycleCallback) (int, error) {
 	goCallBackId := registerCallbackId(callback)
-	if C.LIBVIR_VERSION_NUMBER < 1002001 {
-		return 0, makeNotImplementedError("virConnectNetworkEventRegisterAny")
-	}
-
-	callbackPtr := unsafe.Pointer(C.networkEventLifecycleCallbackHelper)
+	callbackPtr := unsafe.Pointer(C.virGoNetworkEventLifecycleCallbackHelper)
 	var cnet C.virNetworkPtr
 	if net != nil {
 		cnet = net.ptr
 	}
 	var err C.virError
-	ret := C.virConnectNetworkEventRegisterAnyWrapper(c.ptr, cnet,
+	ret := C.virConnectNetworkEventRegisterAnyHelper(c.ptr, cnet,
 		C.VIR_NETWORK_EVENT_ID_LIFECYCLE,
 		C.virConnectNetworkEventGenericCallback(callbackPtr),
 		C.long(goCallBackId), &err)
 	if ret == -1 {
-		freeCallbackId(goCallBackId)
+		virGoFreeCallbackId(goCallBackId)
+		return 0, makeError(&err)
+	}
+	return int(ret), nil
+}
+
+func (c *Connect) NetworkEventMetadataChangeRegister(net *Network, callback NetworkEventMetadataChangeCallback) (int, error) {
+	goCallBackId := registerCallbackId(callback)
+	callbackPtr := unsafe.Pointer(C.virGoNetworkEventMetadataChangeCallbackHelper)
+	var cnet C.virNetworkPtr
+	if net != nil {
+		cnet = net.ptr
+	}
+	var err C.virError
+	ret := C.virConnectNetworkEventRegisterAnyHelper(c.ptr, cnet,
+		C.VIR_NETWORK_EVENT_ID_METADATA_CHANGE,
+		C.virConnectNetworkEventGenericCallback(callbackPtr),
+		C.long(goCallBackId), &err)
+	if ret == -1 {
+		virGoFreeCallbackId(goCallBackId)
 		return 0, makeError(&err)
 	}
 	return int(ret), nil
 }
 
 func (c *Connect) NetworkEventDeregister(callbackId int) error {
-	if C.LIBVIR_VERSION_NUMBER < 1002001 {
-		return makeNotImplementedError("virConnectNetworkEventDeregisterAny")
-	}
 	// Deregister the callback
 	var err C.virError
 	ret := int(C.virConnectNetworkEventDeregisterAnyWrapper(c.ptr, C.int(callbackId), &err))

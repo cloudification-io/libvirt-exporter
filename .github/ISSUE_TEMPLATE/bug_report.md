@@ -3,7 +3,6 @@ name: Bug report
 about: See a bug? Report it!
 title: "[BUG]"
 labels: bug
-assignees: AlexZzz
 
 ---
 
@@ -21,7 +20,7 @@ Version of libvirt library installed on host.
 
 **To Reproduce**
 Steps to reproduce the behavior:
-1. systemctl start libvirt-exproter
+1. systemctl start libvirt-exporter
 2. curl 127.0.0.1:9177/metrics
 3. ...
 4. See error

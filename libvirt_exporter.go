@@ -973,14 +973,18 @@ func CollectDomain(ch chan<- prometheus.Metric, stat libvirt.DomainStats) error 
 
 // Collect Storage pool stats
 func CollectStoragePool(ch chan<- prometheus.Metric, pool libvirt.StoragePool) error {
-	// Refresh pool
-	err := pool.Refresh(0)
-	if err != nil {
-		return err
-	}
 	poolName, err := pool.GetName()
 	if err != nil {
 		return err
+	}
+	// libvirt denies a refresh on a read-only connection; its last known sizes are reported then.
+	err = pool.Refresh(0)
+	if err != nil {
+		lverr, ok := err.(libvirt.Error)
+		if !ok || lverr.Code != libvirt.ERR_OPERATION_DENIED {
+			return err
+		}
+		debugOnce("pool-refresh/"+poolName, "Refresh denied, reporting pool sizes without a refresh", err, "pool", poolName)
 	}
 	poolInfo, err := pool.GetInfo()
 	if err != nil {
@@ -1069,7 +1073,7 @@ func CollectFromLibvirt(ch chan<- prometheus.Metric, uri string) error {
 		err = CollectStoragePool(ch, pool)
 		_ = pool.Free()
 		if err != nil {
-			return err
+			slog.Error("Failed to scrape storage pool metrics", "err", err)
 		}
 	}
 	return nil

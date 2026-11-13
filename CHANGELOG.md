@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Every scrape over libvirt's read-only socket failed on a host with an active storage pool, because libvirt denies the pool refresh there. The pool sizes are now reported without a refresh.
+- An error in one storage pool no longer fails the whole scrape; it is logged and the other pools and all domain metrics are reported.
+
 ## [2.4.0] - 2026-11-13
 ### Added
 - `build-with` containers for Ubuntu 24.04 and 26.04.

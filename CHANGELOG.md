@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- `build-with` containers for Ubuntu 24.04 and 26.04.
+
+### Changed
+- Docker images are published to the GitHub Container Registry (`ghcr.io`) instead of Docker Hub.
+- The Docker image is based on Alpine 3.24 instead of 3.15, so it bundles a newer libvirt client library.
+- Build with Go 1.27 and current dependencies.
+- CI runs on GitHub Actions instead of CircleCI.
+
+### Removed
+- `build-with` containers for Ubuntu 16.04, 18.04 and 20.04.
+
+### Fixed
+- The exporter crashed when a block device in the domain stats had no matching `<disk>` in the domain XML.
+- The Docker build failed because the libxml2 source download no longer exists.
+
 ## [2.3.2] - 2022-04-07
 ### Added
 - Add `--version` argument. By [@Ubun1](https://github.com/Ubun1)

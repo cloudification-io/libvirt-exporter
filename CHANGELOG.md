@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.0] - 2026-11-13
 ### Added
 - `build-with` containers for Ubuntu 24.04 and 26.04.
 - `--log.level` flag (`debug`, `info`, `warn`, `error`; default `info`). At `debug` the exporter logs, once per domain or disk, each libvirt query that fails without failing the scrape: vCPU info, memory stats and block I/O tuning.
